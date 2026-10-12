@@ -1,12 +1,3 @@
-/*
-* Programming Assignment 02: lsv1.0.0
-* This is the source file of version 1.0.0
-* Read the write-up of the assignment to add the features to this base version
-* Usage:
-*       $ lsv1.0.0 
-*       % lsv1.0.0  /home
-*       $ lsv1.0.0  /home/kali/   /etc/
-*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -14,50 +5,231 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
+#include <termios.h>
+#include <pwd.h>
+#include <grp.h>
+#include <time.h>
 
 extern int errno;
 
-void do_ls(const char *dir);
+void do_ls(const char *dir, int long_format, int horizontal_display);
+void print_in_columns(char entries[][256], int count);
+void print_in_horizontal_columns(char entries[][256], int count);
+void print_long_entry(const char *path, const char *name);
 
 int main(int argc, char const *argv[])
 {
-    if (argc == 1)
+int long_format = 0;
+int horizontal_display = 0;
+int target_argc = 0;
+const char *target_dirs[10];
+
+for (int i = 1; i < argc; i++)
+{
+    if (strcmp(argv[i], "-l") == 0)
     {
-        do_ls(".");
+        long_format = 1;
+    }
+    else if (strcmp(argv[i], "-x") == 0)
+    {
+        horizontal_display = 1;
     }
     else
     {
-        for (int i = 1; i < argc; i++)
-        {
-            printf("Directory listing of %s : \n", argv[i]);
-            do_ls(argv[i]);
-	    puts("");
-        }
+        target_dirs[target_argc++] = argv[i];
     }
-    return 0;
 }
 
-void do_ls(const char *dir)
+if (target_argc == 0)
 {
-    struct dirent *entry;
-    DIR *dp = opendir(dir);
-    if (dp == NULL)
+    do_ls(".", long_format, horizontal_display);
+}
+else
+{
+    for (int i = 0; i < target_argc; i++)
     {
-        fprintf(stderr, "Cannot open directory : %s\n", dir);
-        return;
+        if (target_argc > 1)
+        {
+            printf("Directory listing of %s : \n", target_dirs[i]);
+        }
+        do_ls(target_dirs[i], long_format, horizontal_display);
+        if (i < target_argc - 1)
+        {
+            puts("");
+        }
     }
-    errno = 0;
-    while ((entry = readdir(dp)) != NULL)
-    {
-        if (entry->d_name[0] == '.')
-            continue;
-        printf("%s\n", entry->d_name);
-    }
+}
+return 0;
+}
 
-    if (errno != 0)
-    {
-        perror("readdir failed");
-    }
+void do_ls(const char *dir, int long_format, int horizontal_display)
+{
+struct dirent *entry;
+DIR *dp = opendir(dir);
+if (dp == NULL)
+{
+    fprintf(stderr, "Cannot open directory : %s\n", dir);
+    return;
+}
 
-    closedir(dp);
+char entries[1024][256];
+int count = 0;
+
+errno = 0;
+while ((entry = readdir(dp)) != NULL)
+{
+    if (entry->d_name[0] == '.')
+        continue;
+    
+    if (long_format)
+    {
+        char fullpath[1024];
+        snprintf(fullpath, sizeof(fullpath), "%s/%s", dir, entry->d_name);
+        print_long_entry(fullpath, entry->d_name);
+    }
+    else
+    {
+        if (count < 1024)
+        {
+            snprintf(entries[count], sizeof(entries[count]), "%s", entry->d_name);
+            count++;
+        }
+    }
+}
+
+if (errno != 0)
+{
+    perror("readdir failed");
+}
+
+closedir(dp);
+
+if (!long_format && count > 0)
+{
+    if (horizontal_display)
+    {
+        print_in_horizontal_columns(entries, count);
+    }
+    else
+    {
+        print_in_columns(entries, count);
+    }
+}
+}
+
+void print_long_entry(const char *path, const char *name)
+{
+struct stat file_stat;
+if (lstat(path, &file_stat) < 0)
+{
+    perror("lstat error");
+    return;
+}
+
+printf((S_ISDIR(file_stat.st_mode)) ? "d" : "-");
+printf((file_stat.st_mode & S_IRUSR) ? "r" : "-");
+printf((file_stat.st_mode & S_IWUSR) ? "w" : "-");
+printf((file_stat.st_mode & S_IXUSR) ? "x" : "-");
+printf((file_stat.st_mode & S_IRGRP) ? "r" : "-");
+printf((file_stat.st_mode & S_IWGRP) ? "w" : "-");
+printf((file_stat.st_mode & S_IXGRP) ? "x" : "-");
+printf((file_stat.st_mode & S_IROTH) ? "r" : "-");
+printf((file_stat.st_mode & S_IWOTH) ? "w" : "-");
+printf((file_stat.st_mode & S_IXOTH) ? "x" : "-");
+
+printf(" %3ld", (long)file_stat.st_nlink);
+
+struct passwd *pwd = getpwuid(file_stat.st_uid);
+if (pwd != NULL)
+    printf(" %s", pwd->pw_name);
+else
+    printf(" %d", file_stat.st_uid);
+
+struct group *grp = getgrgid(file_stat.st_gid);
+if (grp != NULL)
+    printf(" %s", grp->gr_name);
+else
+    printf(" %d", file_stat.st_gid);
+
+printf(" %8ld", (long)file_stat.st_size);
+
+char time_buf[80];
+struct tm *timeinfo = localtime(&file_stat.st_mtime);
+strftime(time_buf, sizeof(time_buf), "%b %d %H:%M", timeinfo);
+printf(" %s", time_buf);
+
+printf(" %s\n", name);
+}
+
+void print_in_columns(char entries[][256], int count)
+{
+struct winsize w;
+int term_width = 80;
+if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0 && w.ws_col > 0)
+{
+    term_width = w.ws_col;
+}
+
+int max_len = 0;
+for (int i = 0; i < count; i++)
+{
+    int len = strlen(entries[i]);
+    if (len > max_len)
+        max_len = len;
+}
+max_len += 2;
+
+int cols = term_width / max_len;
+if (cols < 1) cols = 1;
+int rows = (count + cols - 1) / cols;
+
+for (int r = 0; r < rows; r++)
+{
+    for (int c = 0; c < cols; c++)
+    {
+        int idx = c * rows + r;
+        if (idx < count)
+        {
+            printf("%-*s", max_len, entries[idx]);
+        }
+    }
+    printf("\n");
+}
+}
+
+void print_in_horizontal_columns(char entries[][256], int count)
+{
+struct winsize w;
+int term_width = 80;
+if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &w) == 0 && w.ws_col > 0)
+{
+    term_width = w.ws_col;
+}
+
+int max_len = 0;
+for (int i = 0; i < count; i++)
+{
+    int len = strlen(entries[i]);
+    if (len > max_len)
+        max_len = len;
+}
+max_len += 2;
+
+int cols = term_width / max_len;
+if (cols < 1) cols = 1;
+int rows = (count + cols - 1) / cols;
+
+for (int r = 0; r < rows; r++)
+{
+    for (int c = 0; c < cols; c++)
+    {
+        int idx = r * cols + c;
+        if (idx < count)
+        {
+            printf("%-*s", max_len, entries[idx]);
+        }
+    }
+    printf("\n");
+}
 }
