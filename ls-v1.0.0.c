@@ -15,7 +15,7 @@
 
 extern int errno;
 
-void do_ls(const char *dir, int long_format, int horizontal_display, int show_hidden);
+void do_ls(const char *dir, int long_format, int horizontal_display, int show_hidden, int reverse_sort);
 void print_in_columns(char entries[][256], int count);
 void print_in_horizontal_columns(char entries[][256], int count);
 void print_long_entry(const char *path, const char *name);
@@ -26,6 +26,7 @@ int main(int argc, char const *argv[])
     int long_format = 0;
     int horizontal_display = 0;
     int show_hidden = 0;
+    int reverse_sort = 0;
     int target_argc = 0;
     const char *target_dirs[10];
 
@@ -43,6 +44,10 @@ int main(int argc, char const *argv[])
         {
             show_hidden = 1;
         }
+        else if (strcmp(argv[i], "-r") == 0)
+        {
+            reverse_sort = 1;
+        }
         else
         {
             target_dirs[target_argc++] = argv[i];
@@ -51,7 +56,7 @@ int main(int argc, char const *argv[])
 
     if (target_argc == 0)
     {
-        do_ls(".", long_format, horizontal_display, show_hidden);
+        do_ls(".", long_format, horizontal_display, show_hidden, reverse_sort);
     }
     else
     {
@@ -61,7 +66,7 @@ int main(int argc, char const *argv[])
             {
                 printf("Directory listing of %s : \n", target_dirs[i]);
             }
-            do_ls(target_dirs[i], long_format, horizontal_display, show_hidden);
+            do_ls(target_dirs[i], long_format, horizontal_display, show_hidden, reverse_sort);
             if (i < target_argc - 1)
             {
                 puts("");
@@ -76,7 +81,7 @@ int compare_entries(const void *a, const void *b)
     return strcmp((const char *)a, (const char *)b);
 }
 
-void do_ls(const char *dir, int long_format, int horizontal_display, int show_hidden)
+void do_ls(const char *dir, int long_format, int horizontal_display, int show_hidden, int reverse_sort)
 {
     struct dirent *entry;
     DIR *dp = opendir(dir);
@@ -112,6 +117,17 @@ void do_ls(const char *dir, int long_format, int horizontal_display, int show_hi
     if (count > 0)
     {
         qsort(entries, count, sizeof(entries[0]), compare_entries);
+
+        if (reverse_sort)
+        {
+            for (int i = 0; i < count / 2; i++)
+            {
+                char temp[256];
+                strcpy(temp, entries[i]);
+                strcpy(entries[i], entries[count - 1 - i]);
+                strcpy(entries[count - 1 - i], temp);
+            }
+        }
 
         if (long_format)
         {
