@@ -15,10 +15,11 @@
 
 extern int errno;
 
-void do_ls(const char *dir, int long_format, int horizontal_display, int show_hidden, int reverse_sort);
+void do_ls(const char *dir, int long_format, int horizontal_display, int show_hidden, int reverse_sort, int recursive, int human_readable);
 void print_in_columns(char entries[][256], int count);
 void print_in_horizontal_columns(char entries[][256], int count);
-void print_long_entry(const char *path, const char *name);
+void print_long_entry(const char *path, const char *name, int human_readable);
+void format_size(long bytes, char *buf);
 int compare_entries(const void *a, const void *b);
 
 int main(int argc, char const *argv[])
@@ -27,6 +28,8 @@ int main(int argc, char const *argv[])
     int horizontal_display = 0;
     int show_hidden = 0;
     int reverse_sort = 0;
+    int recursive = 0;
+    int human_readable = 0;
     int target_argc = 0;
     const char *target_dirs[10];
 
@@ -48,6 +51,14 @@ int main(int argc, char const *argv[])
         {
             reverse_sort = 1;
         }
+        else if (strcmp(argv[i], "-R") == 0)
+        {
+            recursive = 1;
+        }
+        else if (strcmp(argv[i], "-h") == 0)
+        {
+            human_readable = 1;
+        }
         else
         {
             target_dirs[target_argc++] = argv[i];
@@ -56,7 +67,7 @@ int main(int argc, char const *argv[])
 
     if (target_argc == 0)
     {
-        do_ls(".", long_format, horizontal_display, show_hidden, reverse_sort);
+        do_ls(".", long_format, horizontal_display, show_hidden, reverse_sort, recursive, human_readable);
     }
     else
     {
@@ -66,7 +77,7 @@ int main(int argc, char const *argv[])
             {
                 printf("Directory listing of %s : \n", target_dirs[i]);
             }
-            do_ls(target_dirs[i], long_format, horizontal_display, show_hidden, reverse_sort);
+            do_ls(target_dirs[i], long_format, horizontal_display, show_hidden, reverse_sort, recursive, human_readable);
             if (i < target_argc - 1)
             {
                 puts("");
@@ -81,7 +92,27 @@ int compare_entries(const void *a, const void *b)
     return strcmp((const char *)a, (const char *)b);
 }
 
-void do_ls(const char *dir, int long_format, int horizontal_display, int show_hidden, int reverse_sort)
+void format_size(long bytes, char *buf)
+{
+    double size = (double)bytes;
+    int i = 0;
+    const char *units[] = {"", "K", "M", "G", "T"};
+    while (size >= 1024 && i < 4)
+    {
+        size /= 1024;
+        i++;
+    }
+    if (i == 0)
+    {
+        sprintf(buf, "%ld", bytes);
+    }
+    else
+    {
+        sprintf(buf, "%.1f%s", size, units[i]);
+    }
+}
+
+void do_ls(const char *dir, int long_format, int horizontal_display, int show_hidden, int reverse_sort, int recursive, int human_readable)
 {
     struct dirent *entry;
     DIR *dp = opendir(dir);
@@ -135,7 +166,7 @@ void do_ls(const char *dir, int long_format, int horizontal_display, int show_hi
             {
                 char fullpath[1024];
                 snprintf(fullpath, sizeof(fullpath), "%s/%s", dir, entries[i]);
-                print_long_entry(fullpath, entries[i]);
+                print_long_entry(fullpath, entries[i], human_readable);
             }
         }
         else
@@ -149,10 +180,29 @@ void do_ls(const char *dir, int long_format, int horizontal_display, int show_hi
                 print_in_columns(entries, count);
             }
         }
+
+        if (recursive)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                if (strcmp(entries[i], ".") == 0 || strcmp(entries[i], "..") == 0)
+                    continue;
+
+                char fullpath[1024];
+                snprintf(fullpath, sizeof(fullpath), "%s/%s", dir, entries[i]);
+
+                struct stat st;
+                if (lstat(fullpath, &st) == 0 && S_ISDIR(st.st_mode))
+                {
+                    printf("\n%s:\n", fullpath);
+                    do_ls(fullpath, long_format, horizontal_display, show_hidden, reverse_sort, recursive, human_readable);
+                }
+            }
+        }
     }
 }
 
-void print_long_entry(const char *path, const char *name)
+void print_long_entry(const char *path, const char *name, int human_readable)
 {
     struct stat file_stat;
     if (lstat(path, &file_stat) < 0)
@@ -186,7 +236,16 @@ void print_long_entry(const char *path, const char *name)
     else
         printf(" %d", file_stat.st_gid);
 
-    printf(" %8ld", (long)file_stat.st_size);
+    if (human_readable)
+    {
+        char size_buf[16];
+        format_size((long)file_stat.st_size, size_buf);
+        printf(" %8s", size_buf);
+    }
+    else
+    {
+        printf(" %8ld", (long)file_stat.st_size);
+    }
 
     char time_buf[80];
     struct tm *timeinfo = localtime(&file_stat.st_mtime);
