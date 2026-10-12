@@ -15,7 +15,7 @@
 
 extern int errno;
 
-void do_ls(const char *dir, int long_format, int horizontal_display);
+void do_ls(const char *dir, int long_format, int horizontal_display, int show_hidden);
 void print_in_columns(char entries[][256], int count);
 void print_in_horizontal_columns(char entries[][256], int count);
 void print_long_entry(const char *path, const char *name);
@@ -25,6 +25,7 @@ int main(int argc, char const *argv[])
 {
     int long_format = 0;
     int horizontal_display = 0;
+    int show_hidden = 0;
     int target_argc = 0;
     const char *target_dirs[10];
 
@@ -38,6 +39,10 @@ int main(int argc, char const *argv[])
         {
             horizontal_display = 1;
         }
+        else if (strcmp(argv[i], "-a") == 0)
+        {
+            show_hidden = 1;
+        }
         else
         {
             target_dirs[target_argc++] = argv[i];
@@ -46,7 +51,7 @@ int main(int argc, char const *argv[])
 
     if (target_argc == 0)
     {
-        do_ls(".", long_format, horizontal_display);
+        do_ls(".", long_format, horizontal_display, show_hidden);
     }
     else
     {
@@ -56,7 +61,7 @@ int main(int argc, char const *argv[])
             {
                 printf("Directory listing of %s : \n", target_dirs[i]);
             }
-            do_ls(target_dirs[i], long_format, horizontal_display);
+            do_ls(target_dirs[i], long_format, horizontal_display, show_hidden);
             if (i < target_argc - 1)
             {
                 puts("");
@@ -71,7 +76,7 @@ int compare_entries(const void *a, const void *b)
     return strcmp((const char *)a, (const char *)b);
 }
 
-void do_ls(const char *dir, int long_format, int horizontal_display)
+void do_ls(const char *dir, int long_format, int horizontal_display, int show_hidden)
 {
     struct dirent *entry;
     DIR *dp = opendir(dir);
@@ -87,7 +92,7 @@ void do_ls(const char *dir, int long_format, int horizontal_display)
     errno = 0;
     while ((entry = readdir(dp)) != NULL)
     {
-        if (entry->d_name[0] == '.')
+        if (!show_hidden && entry->d_name[0] == '.')
             continue;
         
         if (count < 1024)
