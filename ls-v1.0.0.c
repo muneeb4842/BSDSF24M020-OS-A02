@@ -37,33 +37,40 @@ int main(int argc, char const *argv[])
 
     for (int i = 1; i < argc; i++)
     {
-        if (strcmp(argv[i], "-l") == 0)
-        {
-            long_format = 1;
-        }
-        else if (strcmp(argv[i], "-x") == 0)
-        {
-            horizontal_display = 1;
-        }
-        else if (strcmp(argv[i], "-a") == 0)
-        {
-            show_hidden = 1;
-        }
-        else if (strcmp(argv[i], "-r") == 0)
-        {
-            reverse_sort = 1;
-        }
-        else if (strcmp(argv[i], "-R") == 0)
-        {
-            recursive = 1;
-        }
-        else if (strcmp(argv[i], "-h") == 0)
-        {
-            human_readable = 1;
-        }
-        else if (strcmp(argv[i], "--color") == 0)
+        if (strcmp(argv[i], "--color") == 0)
         {
             color_output = 1;
+        }
+        else if (argv[i][0] == '-' && argv[i][1] != '\0')
+        {
+            // Parse combined short flags (e.g., -laRh)
+            for (int j = 1; argv[i][j] != '\0'; j++)
+            {
+                switch (argv[i][j])
+                {
+                    case 'l':
+                        long_format = 1;
+                        break;
+                    case 'x':
+                        horizontal_display = 1;
+                        break;
+                    case 'a':
+                        show_hidden = 1;
+                        break;
+                    case 'r':
+                        reverse_sort = 1;
+                        break;
+                    case 'R':
+                        recursive = 1;
+                        break;
+                    case 'h':
+                        human_readable = 1;
+                        break;
+                    default:
+                        fprintf(stderr, "ls: invalid option -- '%c'\n", argv[i][j]);
+                        exit(1);
+                }
+            }
         }
         else
         {
@@ -138,12 +145,10 @@ void print_colored_name(const char *dir, const char *name, int color_output)
 
     if (S_ISDIR(st.st_mode))
     {
-        // Bold Blue for Directories
         printf("\033[1;34m%s\033[0m", name);
     }
     else if (st.st_mode & S_IXUSR)
     {
-        // Bold Green for Executables
         printf("\033[1;32m%s\033[0m", name);
     }
     else
@@ -292,7 +297,6 @@ void print_long_entry(const char *path, const char *name, int human_readable, in
     strftime(time_buf, sizeof(time_buf), "%b %d %H:%M", timeinfo);
     printf(" %s ", time_buf);
 
-    // Extract base directory for color check
     char parent_dir[1024];
     strcpy(parent_dir, path);
     char *last_slash = strrchr(parent_dir, '/');
